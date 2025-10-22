@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Loading Company Data...</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+    <style>
+        body {
+            background-color: #f8f9fa;
+            color: #343a40;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .container {
+            max-width: 960px;
+            margin-top: 50px;
+            margin-bottom: 50px;
+            background-color: #ffffff;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+        }
+        h1, h2 {
+            color: #007bff;
+            font-weight: 600;
+            margin-bottom: 25px;
+        }
+        .card {
+            border: none;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+            margin-bottom: 20px;
+        }
+        .card-header {
+            background-color: #007bff;
+            color: white;
+            font-weight: 500;
+            border-bottom: none;
+            padding: 1rem 1.25rem;
+            border-top-left-radius: 8px;
+            border-top-right-radius: 8px;
+        }
+        .card-body {
+            padding: 1.5rem;
+        }
+        .value-label {
+            font-size: 0.9rem;
+            color: #6c757d;
+            margin-bottom: 5px;
+            display: block;
+        }
+        .value-display {
+            font-size: 1.8rem;
+            font-weight: bold;
+            color: #28a745;
+        }
+        .fy-display {
+            font-size: 1.1rem;
+            color: #6c757d;
+            margin-top: 5px;
+        }
+        #loading-message, #error-message {
+            text-align: center;
+            padding: 20px;
+            font-size: 1.1rem;
+            color: #6c757d;
+        }
+        #error-message {
+            color: #dc3545;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="text-center mb-4" id="share-entity-name">Loading Entity Name...</h1>
+
+        <div id="loading-message" class="alert alert-info" role="alert">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            Loading company data...
+        </div>
+
+        <div id="error-message" class="alert alert-danger d-none" role="alert">
+            An error occurred while fetching data. Please try again later.
+        </div>
+
+        <div id="data-content" class="d-none">
+            <h2 class="text-center mb-4">Entity Common Stock Shares Outstanding</h2>
+
+            <div class="row mt-4">
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            Maximum Shares
+                        </div>
+                        <div class="card-body">
+                            <span class="value-label">Value:</span>
+                            <div class="value-display" id="share-max-value"></div>
+                            <span class="value-label">Fiscal Year:</span>
+                            <div class="fy-display" id="share-max-fy"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            Minimum Shares
+                        </div>
+                        <div class="card-body">
+                            <span class="value-label">Value:</span>
+                            <div class="value-display" id="share-min-value"></div>
+                            <span class="value-label">Fiscal Year:</span>
+                            <div class="fy-display" id="share-min-fy"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const DEFAULT_CIK = '0000004977';
+        const PROXY_URL = 'https://api.allorigins.win/raw?url=';
+
+        const titleElement = document.querySelector('title');
+        const entityNameElement = document.getElementById('share-entity-name');
+        const maxValueElement = document.getElementById('share-max-value');
+        const maxFyElement = document.getElementById('share-max-fy');
+        const minValueElement = document.getElementById('share-min-value');
+        const minFyElement = document.getElementById('share-min-fy');
+        const loadingMessage = document.getElementById('loading-message');
+        const errorMessage = document.getElementById('error-message');
+        const dataContent = document.getElementById('data-content');
+
+        async function fetchCompanyData(cik) {
+            const secApiUrl = `https://data.sec.gov/api/xbrl/companyconcept/CIK${cik}/dei/EntityCommonStockSharesOutstanding.json`;
+            let fetchUrl = secApiUrl;
+            
+            if (cik !== DEFAULT_CIK) {
+                fetchUrl = `${PROXY_URL}${encodeURIComponent(secApiUrl)}`;
+            }
+
+            try {
+                const response = await fetch(fetchUrl);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const data = await response.json();
+
+                const entityName = data.entityName;
+                const sharesData = data.units.shares;
+
+                const filteredShares = sharesData.filter(entry =>
+                    parseInt(entry.fy) > 2020 && typeof entry.val === 'number'
+                );
+
+                if (filteredShares.length === 0) {
+                    throw new Error("No data found for years greater than 2020 or no numeric value after filtering.");
+                }
+
+                let maxVal = -Infinity;
+                let minVal = Infinity;
+                let maxFy = null;
+                let minFy = null;
+
+                filteredShares.forEach(entry => {
+                    if (entry.val > maxVal) {
+                        maxVal = entry.val;
+                        maxFy = entry.fy;
+                    }
+                    if (entry.val < minVal) {
+                        minVal = entry.val;
+                        minFy = entry.fy;
+                    }
+                });
+
+                if (minVal === Infinity) {
+                    throw new Error("Could not determine min/max values from filtered data.");
+                }
+
+                return {
+                    entityName: entityName,
+                    max: { val: maxVal, fy: maxFy },
+                    min: { val: minVal, fy: minFy }
+                };
+
+            } catch (error) {
+                console.error("Error fetching or processing data:", error);
+                throw new Error(`Failed to load company data: ${error.message}`);
+            }
+        }
+
+        function updateUI(data) {
+            titleElement.textContent = `${data.entityName} - Shares Outstanding`;
+            entityNameElement.textContent = data.entityName;
+
+            maxValueElement.textContent = data.max.val.toLocaleString();
+            maxFyElement.textContent = data.max.fy;
+
+            minValueElement.textContent = data.min.val.toLocaleString();
+            minFyElement.textContent = data.min.fy;
+        }
+
+        async function init() {
+            loadingMessage.classList.remove('d-none');
+            errorMessage.classList.add('d-none');
+            dataContent.classList.add('d-none');
+
+            const urlParams = new URLSearchParams(window.location.search);
+            const cikParam = urlParams.get('CIK');
+            const currentCik = cikParam || DEFAULT_CIK;
+
+            try {
+                const companyData = await fetchCompanyData(currentCik);
+                updateUI(companyData);
+                dataContent.classList.remove('d-none');
+            } catch (error) {
+                errorMessage.textContent = error.message;
+                errorMessage.classList.remove('d-none');
+            } finally {
+                loadingMessage.classList.add('d-none');
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
+
+---
+uid.txt
+106934912979819725850929918241786623838418411806437771166447597564419062179206
+---
+LICENSE
+MIT License
+
+Copyright (c) 2024 Aflac Company Data App Developer
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+---
+data.json
+{
+  "entityName": "Aflac",
+  "max": {
+    "val": 612000000,
+    "fy": "2021"
+  },
+  "min": {
+    "val": 526000000,
+    "fy": "2024"
+  }
+}
